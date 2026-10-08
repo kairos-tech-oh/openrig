@@ -1,0 +1,120 @@
+version: "0.2"
+name: workbench
+summary: >
+  One orchestrator (the seat the user talks to) on Sonnet, four project
+  engineers on Opus 5.5 (Home Ledger, netwatch, OpenRig, gym), and one
+  independent reviewer on Opus 5.5.
+
+# Paths are WSL paths: OpenRig needs tmux and does not run on native Windows,
+# so this rig is launched from WSL2 Ubuntu where E:\ is mounted at /mnt/e.
+
+# Write OpenRig's managed instruction blocks to CLAUDE.local.md so the
+# project repos' CLAUDE.md files are never touched.
+managed_blocks:
+  claude-code: CLAUDE.local.md
+
+pods:
+  - id: orch
+    label: Orchestration
+    members:
+      - id: lead
+        label: Orchestrator
+        agent_ref: "local:agents/orchestration/orchestrator"
+        runtime: claude-code
+        model: claude-sonnet-5-5
+        profile: default
+        cwd: "."
+    edges: []
+
+  - id: eng
+    label: Engineering
+    members:
+      - id: ledger
+        label: Home Ledger engineer
+        agent_ref: "local:agents/development/implementer"
+        runtime: claude-code
+        model: claude-opus-5-5
+        profile: default
+        cwd: /mnt/e/finance-application/home-ledger-public
+      - id: netwatch
+        label: netwatch engineer
+        agent_ref: "local:agents/development/implementer"
+        runtime: claude-code
+        model: claude-opus-5-5
+        profile: default
+        cwd: /mnt/e/netwatch
+      - id: openrig
+        label: OpenRig engineer
+        agent_ref: "local:agents/development/implementer"
+        runtime: claude-code
+        model: claude-opus-5-5
+        profile: default
+        cwd: /mnt/e/openrig
+      - id: gym
+        label: gym engineer
+        agent_ref: "local:agents/development/implementer"
+        runtime: claude-code
+        model: claude-opus-5-5
+        profile: default
+        cwd: /mnt/e/gym
+      - id: rig-workbench
+        label: rig-workbench engineer
+        agent_ref: "local:agents/development/implementer"
+        runtime: claude-code
+        model: claude-opus-5-5
+        profile: default
+        cwd: /mnt/e/rig-workbench
+    edges: []
+
+  - id: review
+    label: Review
+    members:
+      - id: reviewer
+        label: Reviewer
+        agent_ref: "local:agents/review/independent-reviewer"
+        runtime: claude-code
+        model: claude-opus-5-5
+        profile: default
+        cwd: "."
+    edges: []
+
+edges:
+  - kind: delegates_to
+    from: orch.lead
+    to: review.reviewer
+  - kind: delegates_to
+    from: orch.lead
+    to: eng.openrig
+  - kind: delegates_to
+    from: orch.lead
+    to: eng.rig-workbench
+  - kind: delegates_to
+    from: eng.openrig
+    to: eng.rig-workbench
+  - kind: delegates_to
+    from: eng.rig-workbench
+    to: eng.openrig
+  - kind: delegates_to
+    from: orch.lead
+    to: eng.ledger
+  - kind: delegates_to
+    from: orch.lead
+    to: eng.gym
+  - kind: delegates_to
+    from: orch.lead
+    to: eng.netwatch
+  - kind: can_observe
+    from: review.reviewer
+    to: eng.ledger
+  - kind: can_observe
+    from: review.reviewer
+    to: eng.gym
+  - kind: can_observe
+    from: review.reviewer
+    to: eng.netwatch
+  - kind: can_observe
+    from: review.reviewer
+    to: eng.openrig
+  - kind: can_observe
+    from: review.reviewer
+    to: eng.rig-workbench
