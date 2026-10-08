@@ -36,6 +36,7 @@ import type { Pod, ExpansionPodFragment } from "../domain/types.js";
 import type { RigExpansionService } from "../domain/rig-expansion-service.js";
 import type { PodRigInstantiator } from "../domain/rigspec-instantiator.js";
 import { convergeOp } from "../domain/topology-converge.js";
+import { VALID_EDGE_KINDS } from "../domain/rigspec-schema.js";
 import type { RigLifecycleService } from "../domain/rig-lifecycle-service.js";
 import type { SelfAttachService } from "../domain/self-attach-service.js";
 
@@ -840,6 +841,84 @@ rigsRoutes.post("/:rigId/pods/:podNamespace/members", async (c) => {
   // 201 created. The node may still be failed/attention_required at launch; that
   // is carried in outcome.result.node.status (mirrors expand's per-node status).
   return c.json(outcome, 201);
+});
+
+// POST /api/rigs/:rigId/edges — connect two seats of a running rig.
+// Body: { from, to, kind }. from/to accept a logical id (`pod.member`) or a node
+// id. Unlike add_member's pod-local edges, the endpoints may be in different pods.
+rigsRoutes.post("/:rigId/edges", async (c) => {
+  const rigId = c.req.param("rigId")!;
+  const repo = getRepo(c);
+  const eventBus = c.get("eventBus" as never) as EventBus;
+
+  const rig = repo.getRig(rigId);
+  if (!rig) return c.json({ ok: false, code: "rig_not_found", message: `Rig "${rigId}" not found.` }, 404);
+
+  const body: Record<string, unknown> = await c.req.json().catch(() => ({}));
+  const { from, to, kind } = body;
+  if (typeof from !== "string" || typeof to !== "string" || typeof kind !== "string") {
+    return c.json({ ok: false, code: "validation_failed", message: "from, to and kind are required strings." }, 400);
+  }
+  if (!VALID_EDGE_KINDS.has(kind)) {
+    return c.json({
+      ok: false,
+      code: "validation_failed",
+      message: `Unknown edge kind "${kind}". Expected one of: ${[...VALID_EDGE_KINDS].join(", ")}.`,
+    }, 400);
+  }
+
+  const resolve = (ref: string) => rig.nodes.find((n) => n.logicalId === ref || n.id === ref);
+  const source = resolve(from);
+  const target = resolve(to);
+  if (!source || !target) {
+    const missing = [!source && from, !target && to].filter(Boolean).join(", ");
+    return c.json({ ok: false, code: "node_not_found", message: `No seat ${missing} in rig "${rig.rig.name}".` }, 404);
+  }
+  if (source.id === target.id) {
+    return c.json({ ok: false, code: "validation_failed", message: "An edge needs two different seats." }, 400);
+  }
+  const existing = rig.edges.find((e) => e.sourceId === source.id && e.targetId === target.id && e.kind === kind);
+  if (existing) {
+    return c.json({
+      ok: false,
+      code: "edge_exists",
+      message: `${source.logicalId} already ${kind} ${target.logicalId}.`,
+      edge: existing,
+    }, 409);
+  }
+
+  const txn = eventBus.db.transaction(() => {
+    const edge = repo.addEdge(rigId, source.id, target.id, kind);
+    const persisted = eventBus.persistWithinTransaction({
+      type: "edge.added", rigId, edgeId: edge.id, sourceId: source.id, targetId: target.id, kind,
+    });
+    return { edge, persisted };
+  });
+  const { edge, persisted } = txn();
+  eventBus.notifySubscribers(persisted);
+  return c.json({ ok: true, edge }, 201);
+});
+
+// DELETE /api/rigs/:rigId/edges/:edgeId — disconnect two seats of a running rig.
+rigsRoutes.delete("/:rigId/edges/:edgeId", (c) => {
+  const rigId = c.req.param("rigId")!;
+  const edgeId = c.req.param("edgeId")!;
+  const repo = getRepo(c);
+  const eventBus = c.get("eventBus" as never) as EventBus;
+
+  const rig = repo.getRig(rigId);
+  if (!rig) return c.json({ ok: false, code: "rig_not_found", message: `Rig "${rigId}" not found.` }, 404);
+  const edge = rig.edges.find((e) => e.id === edgeId);
+  if (!edge) return c.json({ ok: false, code: "edge_not_found", message: `Rig "${rig.rig.name}" has no edge "${edgeId}".` }, 404);
+
+  const txn = eventBus.db.transaction(() => {
+    repo.removeEdge(rigId, edgeId);
+    return eventBus.persistWithinTransaction({
+      type: "edge.removed", rigId, edgeId, sourceId: edge.sourceId, targetId: edge.targetId, kind: edge.kind,
+    });
+  });
+  eventBus.notifySubscribers(txn());
+  return c.json({ ok: true, edge });
 });
 
 // DELETE /api/rigs/:rigId/pods/:podRef

@@ -125,6 +125,8 @@ export type RigEvent =
   | { type: "rig.deleted"; rigId: string }
   | { type: "node.added"; rigId: string; nodeId: string; logicalId: string }
   | { type: "node.removed"; rigId: string; nodeId: string }
+  | { type: "edge.added"; rigId: string; edgeId: string; sourceId: string; targetId: string; kind: string }
+  | { type: "edge.removed"; rigId: string; edgeId: string; sourceId: string; targetId: string; kind: string }
   | { type: "binding.updated"; rigId: string; nodeId: string }
   | { type: "session.status_changed"; rigId: string; nodeId: string; status: string }
   | { type: "session.detached"; rigId: string; nodeId: string; sessionName: string }
