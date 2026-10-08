@@ -350,6 +350,29 @@ describe("PluginVendorService — vendoring (HG-2.3)", () => {
     expect(fs._store[marker]).toBe("0.6.8\n");
   });
 
+  it("orders prerelease versions by semver precedence (fork builds such as 0.6.8-kairos.N)", () => {
+    const marker = "/home/test/.claude/skills/rigs/.openrig-vendor-version";
+    const skill = "/home/test/.claude/skills/rigs/SKILL.md";
+    const fs = mockFs({ [`${RIGS}/SKILL.md`]: "# fork 1", [marker]: "0.6.7\n", [skill]: "# rigs 0.6.7" });
+    const svc = service(fs);
+    const install = (version: string, body: string) => {
+      fs._store[`${RIGS}/SKILL.md`] = body;
+      svc.ensureSkillDirGlobally(RIGS, "rigs", version, ["/home/test/.claude/skills"]);
+    };
+
+    install("0.6.8-kairos.1", "# fork 1");
+    expect(fs._store[marker]).toBe("0.6.8-kairos.1\n");
+    install("0.6.8-kairos.10", "# fork 10");
+    expect(fs._store[skill]).toBe("# fork 10");
+    install("0.6.8-kairos.9", "# fork 9");
+    expect(fs._store[skill]).toBe("# fork 10");
+    install("0.6.8", "# upstream 0.6.8");
+    expect(fs._store[marker]).toBe("0.6.8\n");
+    install("0.6.8-kairos.11", "# fork 11");
+    expect(fs._store[skill]).toBe("# upstream 0.6.8");
+    expect(() => install("0.6.8+build.1", "# metadata")).toThrow(/invalid version '0.6.8\+build.1'/);
+  });
+
   it("fails loudly when a skill folder to project is missing", () => {
     expect(() => service(mockFs()).ensureSkillDirGlobally(RIGS, "rigs", "0.6.7", ["/home/test/.claude/skills"])).toThrow(/'rigs' is missing at/);
   });

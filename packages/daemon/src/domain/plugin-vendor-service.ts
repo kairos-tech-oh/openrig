@@ -60,19 +60,36 @@ const REPO_BASE = "https://github.com/mvschwarz/openrig-plugins";
 const PLUGIN_MANIFESTS = [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"] as const;
 const GLOBAL_VENDOR_VERSION = ".openrig-vendor-version";
 
-function parseNumericVersion(raw: string, source: string): number[] {
+// Accepts a semver prerelease (fork builds such as 0.6.8-kairos.1); build metadata is not accepted.
+function parseNumericVersion(raw: string, source: string): { core: number[]; pre: string[] } {
   const value = raw.trim();
-  if (!/^\d+(?:\.\d+){2}$/.test(value)) {
+  const match = /^(\d+\.\d+\.\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(value);
+  if (!match) {
     throw new Error(`[plugin-vendor] invalid version '${value}' at ${source}; expected numeric x.y.z authority`);
   }
-  return value.split(".").map(Number);
+  return { core: match[1]!.split(".").map(Number), pre: match[2] ? match[2].split(".") : [] };
 }
 
+// Semver precedence: a release outranks its own prereleases; numeric identifiers compare as numbers.
 function compareVersions(a: string, b: string): number {
   const left = parseNumericVersion(a, "source version");
   const right = parseNumericVersion(b, "target version");
   for (let i = 0; i < 3; i++) {
-    if (left[i] !== right[i]) return left[i]! < right[i]! ? -1 : 1;
+    if (left.core[i] !== right.core[i]) return left.core[i]! < right.core[i]! ? -1 : 1;
+  }
+  if (left.pre.length === 0 || right.pre.length === 0) {
+    return right.pre.length - left.pre.length === 0 ? 0 : left.pre.length === 0 ? 1 : -1;
+  }
+  for (let i = 0; i < Math.max(left.pre.length, right.pre.length); i++) {
+    const l = left.pre[i];
+    const r = right.pre[i];
+    if (l === undefined || r === undefined) return l === undefined ? -1 : 1;
+    if (l === r) continue;
+    const ln = /^\d+$/.test(l);
+    const rn = /^\d+$/.test(r);
+    if (ln && rn) return Number(l) < Number(r) ? -1 : 1;
+    if (ln !== rn) return ln ? -1 : 1;
+    return l < r ? -1 : 1;
   }
   return 0;
 }
