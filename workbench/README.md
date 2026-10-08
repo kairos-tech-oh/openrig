@@ -195,20 +195,20 @@ the patch again and reset `N` to 1. The version lives in the same five files
 upstream bumps: the root, `cli`, `daemon` and `ui` `package.json` files and
 `package-lock.json`.
 
-**Release.** Tag `v<version>` on `kairos-tech-oh/openrig`. It is published as a
-normal release marked latest, not as a GitHub prerelease. It carries three assets:
+**Release.** Tag `v<version>` on `kairos-tech-oh/openrig`, published as a
+normal release (not a draft, not a GitHub prerelease) and marked latest. It is
+built by `scripts/build-package.sh` from the clean tagged commit, so the
+daemon's `/healthz` reports `semver`, `commit` equal to the tag commit, and
+`dirty: false`. It carries two assets:
 
 | Asset | Content |
 | --- | --- |
-| `openrig-cli-<version>.tgz` | The CLI package; `npm install -g` accepts it |
+| `openrig-cli-<version>.tgz` | The CLI package (the plain `npm pack` name); `npm install -g` accepts it |
 | `openrig-cli-<version>.tgz.sha256` | `sha256sum` output for the tarball |
-| `openrig-release.json` | `{version, tag, commit, tarball, url, sha256}` |
 
-To find the newest release, the app fetches
-`https://github.com/kairos-tech-oh/openrig/releases/latest/download/openrig-release.json`.
-That URL needs no API call and no scraping. To find the installed version, it
-reads the first token of `rig --version`, which prints something like
-`0.6.8-kairos.1 (1a2b3c4d)`.
+Rig Workbench's own publish step pulls a named release with `gh`, checks the
+SHA-256, signs the tarball with its update key and lists it in the app's
+`latest.json`. The app finds daemon updates there, not on this repo.
 
 **Update sequence.** Download the tarball and check its SHA-256. Then run
 `rig daemon stop`, `npm install -g <tarball>` and `rig daemon start`. Confirm

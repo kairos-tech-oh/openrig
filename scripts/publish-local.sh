@@ -22,6 +22,8 @@ for arg in "$@"; do
 done
 
 die() { echo "publish-local: $*" >&2; exit 1; }
+# Remote-state checks only warn in a dry run, so it works before the branch is pushed.
+check() { if $DRY_RUN; then echo "publish-local: warning: $*" >&2; else die "$@"; fi; }
 
 for tool in git gh node npm sha256sum; do
   command -v "$tool" >/dev/null || die "$tool is not installed"
@@ -49,10 +51,10 @@ COMMIT="$(git rev-parse HEAD)"
 
 # gh creates the tag on GitHub at this commit, so the commit must already be pushed.
 gh api "repos/$REPO/commits/$COMMIT" --silent 2>/dev/null \
-  || die "commit ${COMMIT:0:8} is not on $REPO; push the branch first"
+  || check "commit ${COMMIT:0:8} is not on $REPO; push the branch first"
 if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1 \
   || [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
-  die "$TAG already exists on $REPO; bump the -kairos.N number"
+  check "$TAG already exists on $REPO; bump the -kairos.N number"
 fi
 
 LATEST="$(gh release view -R "$REPO" --json tagName -q .tagName 2>/dev/null || true)"
@@ -65,7 +67,7 @@ if [ -n "$LATEST" ]; then
       process.exit(a[i] > b[i] ? 0 : 1);
     }
     process.exit(1);
-  ' "$VERSION" "$LATEST" || die "$VERSION is not newer than the latest release $LATEST"
+  ' "$VERSION" "$LATEST" || check "$VERSION is not newer than the latest release $LATEST"
 fi
 
 echo "=== Fork release $TAG from ${COMMIT:0:8} to $REPO ==="
@@ -80,13 +82,6 @@ TARBALL="openrig-cli-$VERSION.tgz"
 [ -f "$OUT_DIR/$TARBALL" ] || die "npm pack did not produce $TARBALL in $OUT_DIR"
 
 (cd "$OUT_DIR" && sha256sum "$TARBALL" > "$TARBALL.sha256")
-SHA256="$(cut -d' ' -f1 "$OUT_DIR/$TARBALL.sha256")"
-node -e '
-  const [version, tag, commit, tarball, repo, sha256, out] = process.argv.slice(1);
-  const url = `https://github.com/${repo}/releases/download/${tag}/${tarball}`;
-  const manifest = { version, tag, commit, tarball, url, sha256 };
-  require("fs").writeFileSync(out, JSON.stringify(manifest, null, 2) + "\n");
-' "$VERSION" "$TAG" "$COMMIT" "$TARBALL" "$REPO" "$SHA256" "$OUT_DIR/openrig-release.json"
 
 echo ""
 echo "Assets in $OUT_DIR:"
@@ -107,6 +102,6 @@ gh release create "$TAG" -R "$REPO" \
   --title "OpenRig fork $VERSION" \
   --notes "Fork build of OpenRig from ${COMMIT:0:8}. Install with \`npm install -g $TARBALL\` after checking $TARBALL.sha256." \
   --latest \
-  "$OUT_DIR/$TARBALL" "$OUT_DIR/$TARBALL.sha256" "$OUT_DIR/openrig-release.json"
+  "$OUT_DIR/$TARBALL" "$OUT_DIR/$TARBALL.sha256"
 
 echo "Published: https://github.com/$REPO/releases/tag/$TAG"
