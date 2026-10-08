@@ -65,12 +65,9 @@ pods:
         profile: default
         cwd: /mnt/e/rig-workbench
     edges:
-      - kind: delegates_to
+      - kind: collaborates_with
         from: openrig
         to: rig-workbench
-      - kind: delegates_to
-        from: rig-workbench
-        to: openrig
 
   - id: review
     label: Review
