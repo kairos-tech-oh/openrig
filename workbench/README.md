@@ -181,6 +181,46 @@ startup turn failed while the login was expired, so it was sent a nudge with
   (`CHANGELOG.md`, `Cargo.lock`, `crates/hl/Cargo.toml`). `E:\gym` is not a git
   repository.
 
+## Fork releases
+
+The Rig Workbench app updates OpenRig from releases of this fork
+(`kairos-tech-oh/openrig`), not from npm.
+
+**Version.** `X.Y.Z-kairos.N`, where `X.Y.Z` is upstream's version plus one
+patch (upstream 0.6.7 gives `0.6.8-kairos.N`). By semver that sorts above the
+upstream base and any plain fork build of it (an install that reports `0.6.7`).
+It also sorts below the next real upstream release. `N` counts up from 1 for each
+release on the same base. When the fork rebases onto a new upstream version, bump
+the patch again and reset `N` to 1. The version lives in the same five files
+upstream bumps: the root, `cli`, `daemon` and `ui` `package.json` files and
+`package-lock.json`.
+
+**Release.** Tag `v<version>` on `kairos-tech-oh/openrig`. It is published as a
+normal release marked latest, not as a GitHub prerelease. It carries three assets:
+
+| Asset | Content |
+| --- | --- |
+| `openrig-cli-<version>.tgz` | The CLI package; `npm install -g` accepts it |
+| `openrig-cli-<version>.tgz.sha256` | `sha256sum` output for the tarball |
+| `openrig-release.json` | `{version, tag, commit, tarball, url, sha256}` |
+
+To find the newest release, the app fetches
+`https://github.com/kairos-tech-oh/openrig/releases/latest/download/openrig-release.json`.
+That URL needs no API call and no scraping. To find the installed version, it
+reads the first token of `rig --version`, which prints something like
+`0.6.8-kairos.1 (1a2b3c4d)`.
+
+**Update sequence.** Download the tarball and check its SHA-256. Then run
+`rig daemon stop`, `npm install -g <tarball>` and `rig daemon start`. Confirm
+that `rig --version` reports the new version. Stopping the daemon leaves the
+seats' tmux sessions and the queue alone. Don't install over a running daemon:
+it loads some modules lazily and could mix two versions.
+
+**Publishing.** Run `scripts/publish-local.sh` from a clean tree, with the
+version bumped and the branch pushed. It builds, packs and checksums the release,
+then creates it with `gh`, so it uses no Actions minutes. `--dry-run` stops after
+packing.
+
 ## Next steps
 
 1. Clear blocker 1, release the seats and confirm all six are ready in
